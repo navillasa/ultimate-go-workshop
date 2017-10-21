@@ -620,3 +620,91 @@ func (t Time) Add(d Duration) Time {
     nsec := int32(t.nsec) + int32(d%32)
 }
 ```
+methods aren't real. they're made up. data and functions are the only things that are real (lol).
+
+#### "no getters, no setters! that's not an API."
+don't call methods like this!!!
+``` go
+d.displayName()
+d.setAge(45)
+
+fmt.Println("\nWhat the Compiler is Doing:")
+
+// what go is doing underneath
+data.displayName(d)
+(*data).setAge(&d, 45)
+```
+
+``` go
+// file defines a system file
+type file struct {
+    name string
+}
+
+// read implements the reader interface for a while
+func (file) read(b []byte) (int, error) {
+    s := "<rss><channel><title>Going Go Programming</title></channel></rss>"
+    copy(b, s)
+}
+
+// pipe defines a named pipe network connection
+type pipe struct {
+    name string
+}
+
+func retrieve(r reader) error {
+    data := make([]byte, 100)
+    
+    len, err := r.read(data)
+    if err != nil {
+        return err
+    }
+
+    fmt.Println(string(data[:len]))
+    return nil
+}
+```
+^ it's saying, give me any piece of data with this capability. lol!
+- highest level of decoupling, because this function could not care less about the concrete data. it operates against the interface.
+
+- pass by value is about getting a copy of the value across the program boundary
+- the second word is a pointer to the concrete data
+``` go
+// create two values one of type file and one of type pipe
+f := file{"data.json"}
+p := pipe{"cfg_service"}
+
+// call the retrieve function for each concrete type
+retrieve(f)
+retrieve(p)
+```
+- vector table (v table) stores i class implementations
+- i-Table shows what's being stored
+    - first word represents type of value being stored
+- inheritance is very hard to maintain mental models
+- giving us interfaces, which then gives us polymorphism
+- nothing concrete until we put concrete data inside of them
+
+``` go
+// implements notifier interface using pointer semantics
+
+// sendnotification acccepts vals that impment the notifier interface
+
+func main() {
+    u := user{"Bill", "bill@email.com"}
+}
+
+```
+
+method implemented with pointer receiver
+``` go
+type duration int
+
+func (d *duration) notify() {
+    fmt.Println("sending notification in", *d)
+}
+
+func main() {
+    duration(42).notify()
+}
+```
