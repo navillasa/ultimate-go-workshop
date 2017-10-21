@@ -3,7 +3,7 @@
 following along here!
 <https://github.com/ardanlabs/gotraining/tree/master/topics/go/language/pointers>
 
-## my stream of conscious-esque notes of bill advice
+## my stream of conscious-esque notes of bill's presentation
 
 - mechanical sympathy— learn about the hardware and operating system to be sympathetic
 - “engineering not about writing a piece of software and watching it work in production”
@@ -387,6 +387,8 @@ L3 - ....
 
 ### STRINGS IN GO
 "Strings are, essentially, made up." -bk
+(as far as standards across languages)
+
 ``` go
 var s string
 ```
@@ -460,3 +462,161 @@ for i, v := range &five {
 - don't share v!!!!!!! it's a local variable, a copy of the original. DONT SHARE IN CONCURRENCY MODE. then you get BAD SIDE EFFECTS.
 - ^ new go developers do this sometimes..
 - work with slices, get comfortable, they're your core data structure
+- all slices are 3-word data structures
+    - 1st word = array
+    - 2nd word = length
+    - 3rd word = capacity
+- construction doesn't tell us size, but how it's SHARED
+- capacity is total number of elements that can be read from that position
+- length is for today
+- if you don't know how much memory you need at time of construction, then start at 0
+    - if you do, then definitely pre-allocate them!
+
+``` go
+func inspectSlice(slice []string) {
+    fmt.Printf("Length[%d] Capacity[%d]\n", )
+}
+
+func main() {
+    // declare a nil slice of strings
+    var data []string
+    // you could also do this -> data := []string{}
+
+    // capture the capacity of the slice
+    lastCap := cap(data)
+
+    // append ~10k strings to the slice
+    for record := 1; record <= 102400; record++ {
+
+        // use the built-in function
+    }
+}
+```
+
+### the empty struct!
+a zero allocation type!
+an empty slice points to the empty struct
+
+``` go
+func main() {
+    var es struct{}
+    
+    // declare a nil slice of strings
+    var data []string
+    data := []string{}
+
+    var u user
+    u := user{}
+}
+```
+
+using the `append` method:
+
+``` go
+// capture the capacity of the slice
+lastCap := cap(data)
+
+// append ~10k strings to the slice
+for record :=1; record <= 102400; record++ {
+    
+    // use the built-in function `append` to add to the slice
+    data = append(data, fmt.Sprintf("Rec: %d", record))
+
+    // when the capacity of the slice changes, display the changes
+    if lastCap != cap(data) {
+
+    }
+}
+```
+
+- memory leaks-----
+    - relic new free (in other languages-- need to call all three)
+### MEMORY LEAKS IN GO-- it's where there's a reference being held and there shouldn't be
+- not necessarily where you're allocating the most.. might get lucky but might not
+- are you creating extra go routines when this program is running? where to look if you have a leak!
+    - 1. go routine leaks
+    - 2. if you're using a map as a cache... sometimes you need to delete some of that cache. you're not cleaning up resources
+- once you get to 1000 elements, you're not longer doubling,  no longer 100% growth
+- <b>data race</b> is when you have two or more go routines-- where one is doing read, one is doing write, and they're both going to the same place. don't do that!!!!!!
+    - compiler will try to do optimizations that it can't do when you're crazy like that.
+- 3 index slice allows you to not only ....
+    - you know you're about to make an append call that will hopefully attach from the original data structure
+- any calls to append in a code review is a RED FLAG---
+    - things are already doing append for you. you shouldn't be calling append again
+- if performance matters, then you have to write algorithms that are efficient
+    - reduce as many allocations as we can
+- generic algorithms are too abstract-- hide cost
+- have to refactor a little everyday
+
+### DECOUPLING
+- decoupling is being used <b>today</b>
+- all functions need to be used
+- BUT design and architect for tomorrow
+    - => BEHAVIOR
+* methods
+* interfaces
+* embedding
+* exporting
+
+#### methods allow a piece of data to have a capability
+- in go we have both functions and methods (where executed against data itself)
+- why will a function always be more readable than any method?
+    - functions are methods producing data transformations. if you're writing a function that's almost self-documenting.
+    - if you call a method, do you know what state you're using? no! functions are more readable and testable and explicit.
+    - a function accepting `v.name` -- A-parameters are better
+1) a function is a method when the function has declared a receiver parameter within it. go has two types of receivers:
+    * value receivers
+    * pointer receivers
+you're going to see a mix of receivers until we get to design. in production, you don't want to see a mix of semantics. they hit everyone in the face.
+- when do you use one receiver over the other? you cannot have a mix!!!!
+#### when to use value semantics or pointer semantics?
+* if you're working with the built-in types (integers, strings, bools)
+    - ALWAYS USE VALUE SEMANTICS
+    - unless you have a VERY good reason
+* reference types are functions (maps, slice, ...)
+    - VALUE SEMANTICS
+    - marshalling is the big exception. otherwise NEVER take the address of these things!
+* struct types -- user defined types
+    - you need to decide when you're writing the type!!!!
+    - we're not mixing! know now!
+
+new type IP is based on a slice of bytes
+``` go
+type IP []byte
+type IPMask []byte
+
+func (ip IP) Mask(mask IPMask) IP {
+    if len(mask) == IPv6len....
+}
+```
+lots of value of.
+``` go
+// what semantic is in play? you must always ask when writing your own type!!!!!!
+// two different times are not the same.
+// VALUE-- because any mutation is a new data point, not modifying an existing one.
+type Time struct {
+    sec int64
+    nsec int32
+    loc *Location
+}
+```
+if you're not sure, always use pointer semantics lol. because it's always safer to share something. sometimes copying is going to cost you.
+- you can't make copies of mutexes.
+- readability and intuitiveness FIRSTTTTT.
+
+``` go
+// factory functions dictate the semantics that will be used. the Now function returns are value of type Time. this means we should be using value semantics and copy Time values.
+func Now() Time {
+    sec, nsec := now()
+    return Time{sec + unixToInternal, nsec, Local}
+}
+```
+Now gives you a copy of a time value
+value semantics-- everyone can have their own copy
+
+``` go
+func (t Time) Add(d Duration) Time {
+    t.sec += int64(d / 1e9)
+    nsec := int32(t.nsec) + int32(d%32)
+}
+```
