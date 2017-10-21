@@ -161,9 +161,129 @@ func increment(inc *int) {}
 - when a go program panics, you want it shut down (because you're probably done something against integrity)
 #### POINTERS HELP US WITH SHARING
 ``` go
-// if we use the variable by itself-- what's int eh box
-// ampersand-- WHERE is the box
-// * VALUEEEEE -- this is our indirect memory access-- can only happen through direct read of what that address is
+// if we use the variable by itself-- what's in the box
+// & is WHERE is the box
+// * is VALUEEEEE -- this is our indirect memory access-- can only happen through direct read of what that address is
 // gives us the indirect read operator; we've just changed memory outside of our own frame
 *inc++
+```
+- you probably won't go too far down your function calls in your programming
+- that's why we're using smallish stacks
+#### if we go to make another function call and there isn't enough space for the frame-- WHAT HAPPENS?
+    - we need a new stack!!!
+    - we grow the stack 2k times whatever the percentage is (25%)
+    - now we have all new addressable space
+    - so now we have to copy everything that's in every frame-- has to be copied over to the new stack, and POINTERS have to be chased out too
+    - when your stack has to grow, those values are moving
+    - pointer's address is now changed
+- you're taking the cost for this (which is good you should be penalized for this)
+- if garbage collection notices you're using 25% or less than current stack space, then it will cut it down (behind the scenes.. thanks go routine)
+``` go
+func main() {
+    s := "HELLO"
+    stackCopy(&s, 0, [size]int{})
+}
+
+// stackCopy recursively runs increasing size of the stack
+func stackCopy(s *string, c int a[size]int) {
+    println(c, s, *s)
+
+    c++
+    if c == 10 {
+        return
+    }
+
+    stackCopy(s, c, a)
+}
+```
+#### contiguous memory is our friend
+
+### escape analysis
+
+escape analysis-- value can no longer be on the stack. the value must ESCAPE to the heap.
+go wants for all values to be on stacks, because then you have self-cleaning data and the garbage collector doesn't have to be involved.
+allocations in go WILL CAUSE PERFORMANCE ISSUES.
+
+- if you share something in such a way that it's unsafe to leave it on the stack, then the compiler decides it must be moved to the HEAP
+- all about convention over integration----- will directly influence what decisions that the compiler will make
+
+``` go
+package main
+
+// user represents a user in the system
+type user struct {
+    name string
+    email string
+}
+
+// main is the entry point for the application
+func main() {
+    u1 := createUserV1()
+    u2 := createUserV2()
+
+    println("u1", &u1, "u2", &u2)
+}
+
+// createUserV1 creates a user value and passed a copy back to the caller
+// go:noinline
+func createUserV1() user {
+    u := user {
+        name: "Bill",
+        email: "bill@ardanlabs.com",
+    }
+
+    println("V1", &u)
+
+    return u
+}
+
+// createUserV2 creates a user value and shares the value with the caller
+// go:noinline
+// ^ this is throwing the default functionality away to get the function call working-- not inline-- gets rid of optimizational
+func createUserV2() *user {
+    u := user {
+        name: "Bill",
+        email: "bill@ardanlabs.com"
+    }
+    println("V2", &u)
+
+    return &u
+}
+```
+
+- construction of a value doesn't tell you where it will be
+- how it's shared determines its location
+- if you're sharing something <b>down</b> the call stack, no escape, no problem, because we know it will always be at the bottom
+- but if the compiler notices you're sharing up the call stack, then we can't do that thing where all the pointers point to the main frame (haha)
+- `u` represents a value on the heap--
+    - so a pointer secretly points to the value on the heap
+    - we know it's on the heap because it was shared up the call stack
+#### no go routine can have a pointer to another go routine's stack--- think of the mess!!!!
+- you're the go routine. your notebook is a stack. every page is a frame. to share, you have to copy to the whiteboard (the stack).
+    - if someone else needs a piece of information, it needs to go on the whiteboard.
+- escape analysis determines whether a value can stay on the stack or needs to go to the heap.
+- we will be using the heap!!!! don't be afraid!!!!
+    - the benefit is efficiency-- having a copy of something that everyone can share, instead of multiple copies across diff stacks
+    - the cost is performance-- once something's on the heap, the garbage collector has to get involved
+
+- if you use `go build -gcflags "-m -m"`
+    - compiler will tell you its escape analysis decisions
+    - inlining tells you-- we're not going to make a function call, we're going to inline it in place
+    - a lot of factory functions can be inlined
+- any time you see `&` think SHARE
+    - ALWAYS CONSTRUCT VALUES WITH VALUE SEMANTICS
+    - leverage `&` for sharing-- DON'T USE `&` IN CONSTRUCTOR OR BILL WILL CRY
+``` go
+// NEVER DO THIS--- NOTE THE USE OF &user and *u
+// THIS MAKES EVERYTHING INSTANTLY UNREADABLE BECAUSE REFERRING SOMEWHERE ELSE AND MAKING POINTER USELESS
+func createUserV2() user {
+    u := &user {
+    name: "Bill",
+    email: "bill@ardanlabs.com"
+}
+println("V1", &u)
+
+return *u
+
+}
 ```
