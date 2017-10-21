@@ -321,3 +321,142 @@ return *u
     - FIRST PRIORITY - get program working
     - don't trust anything until it runs (twice ☺️ )
 - every go routine has stacks and pointers going to the heap etc.
+
+
+for testing benchmark:
+`go test -run none -bench . -bnechtime 3s`
+- will tell you how much time to traverse the linked list-- check out my caching.go file.
+- main memory takes a while to access
+- from a speed perspective, total amount of memory = total cache
+compact data structures that fit in cache are fastest
+- non-cache access can slow things down by orders of magnitude (thanks Scott Myers)
+    - https://www.youtube.com/watch?v=WDIkqP4JbkE
+#### if performance matters, then total amount of memory you have to work with is total cache
+- main memory might as well not be there lol
+
+- if you have a 3gigahert clock, you have three clock cycles for every nanosecond of time.
+    - you should be able to execute 4 instructions every clock cycle.
+    - without these fancy <b>pipeline games</b>, it would take 4 cycles per instruction
+
+```
+3GHZ(3 clock cycles/ns) * 4 instructions per cycle = 12 instructions per ns!
+
+L1 - 64KB Cache (Per Core)
+    32KB I-Cache
+    32KB D-Cache
+    2 HW Threads
+    4 cycles of latency
+    Stalls for 16 instructions or 1.3 ns
+
+L2 - 256KB Cache (Per Core)
+    Holds both instructions and data
+    2 HW Threads
+    11 cycles of latency
+    Stalls for 44 instructions or 3.6 ns
+
+L3 - ....
+
+```
+
+#### how do we create predictable access patterns to memory?
+- traversal of contiguous blocks of memory --> arrays ❤️
+- but in GO --> the most important data structure is the slice
+    - slices are dynamic-- a predictable access pattern
+    - stack: block of contiguous memory
+- java is great, but it has a virtual machine. it lays out memory out contiguously. we don't have a VM here, so to reduce the amount of code we need, we use the slice.
+- we want to use slices until we can't because of mechanical sympathy.
+- the other cache is the TLB (translation like side buffer cache)
+    - a little cache that the OS maintains
+    - <b>maps between virtual memory addresses and physical memory addresses</b>
+    - what does the OS use to manage memory?????
+        - PAGES! usually about 4kb in size (sometimes 2kb)
+    - the TLB maintains a page
+- hardware has to look in TLB to find the memory piece's physical location
+    - if it's not there, then you have to ask the OS
+- when we look at the row traversal numbers-- why is it so fast?
+    - when we row down the matrix row by row-- the ??? are hiding all of the latency costs
+    - but why is column traversal so bad? (8273021 ns/op)
+    - linkedlist is in between (5791435 ns/op)
+#### it's critical that we use the slice to create predictable access patterns out of the box-- will beat almost anything else in terms of performance
+- the most critical data structure for hardware level is the array ❤️❤️❤️❤️❤️
+- the problem is getting data INTO the processor, not the clock speed
+    - if you're not trying to reduce latency through predictable access patterns, you're not being mechanically sympathetic
+- non-uniform memory access-- check out Frank Denneman series: <http://allthingscloud.mscproductions.com/vmware-numa-deep-dive-part-1-uma-numa/>
+- facebook doesn't use multisocket-- all single because it's reduces latency
+- <b>when you try to do object oriented programming in go, you walk away from mechanical sympathies of predictable access patterns</b>
+
+### STRINGS IN GO
+"Strings are, essentially, made up." -bk
+``` go
+var s string
+```
+* 1st word: pointer
+* 2nd word: bytes
+- a string with a backing array looks like: `s2 := "hello"`
+- two word data structure with a second data structure behind the scenes: bytes
+- when the compiler doesn't know the size of something at compile time, it immediately needs to place it on the heap (if literal string)
+
+``` go
+var strings [5]string
+
+strings[0] = "Apple"
+// this assignment always creates a copy... so what is the cost of this assignment?
+// what does index 0 look like after this assignment?
+// does index 0 get its own backing array? or do we share one?
+// well, pointers are used for SHARING
+strings[1] = "Orange"
+strings[2] = "Banana"
+strings[3] = "Grape"
+strings[4] = "Plum"
+```
+- the 4 range actually implements BOTH semantics: pointer semantics AND value semantics
+#### to maintain long-lasting mental models, you NEED to keep your semantics consistent
+- pointer semantics --> sharing!!!!
+``` go
+// iterate over the array of strings
+for i, fruit := range strings {
+    fmt.Println(i, fruit)
+}
+
+// declare an array of 4 integers that is initialized with some values
+numbers := [4]int{10, 20, 30, 40}
+```
+- the string is DESIGNED to stay on your stack
+- <b>NEVER EVER take the address of a string and share it</b>
+- strings never have to be shared-- they're designed to stay in the stack
+- if they end up in the heap, there's wayyyy to much garbage produce that will need to be cleaned up
+- when you work with strings, know that you're working with your own copy
+- the size of an array is part of its type information
+    - the compiler must know the size at compile time since it's part of its type information
+- however, a slice is a dynamic data structure
+- 
+
+``` go
+// using the pointer semantic form of the for range
+// the for range makes a copy of the data structure that we're ranging over
+// when we ask for v, we're asking for a.. copy of a copy
+five := [5]string{"Annie", "Betty", "Charley", "Doug", "Edward"}
+fmt.Printf("Bfr[%s] : ", five[1])
+
+for i, v := range five {
+    five[1] = "Jack"
+
+    if i == 1 {
+            fmt.Printf("v[%s]\n", v)
+    }
+}
+println("\n\n\n\n\n\n\n\n\n")
+```
+on the other hand, NEVER DO THIS LOL:
+```
+for i, v := range &five {
+    five[1] = "Jack"
+
+    if i == 1 {
+            fmt.Printf("v[%s]\n", v)
+    }
+}
+```
+- don't share v!!!!!!! it's a local variable, a copy of the original. DONT SHARE IN CONCURRENCY MODE. then you get BAD SIDE EFFECTS.
+- ^ new go developers do this sometimes..
+- work with slices, get comfortable, they're your core data structure
