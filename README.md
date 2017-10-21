@@ -1,5 +1,8 @@
 # Ultimate Go with Bill Kennedy
 
+following along here!
+<https://github.com/ardanlabs/gotraining/tree/master/topics/go/language/pointers>
+
 ## my stream of conscious-esque notes of bill advice
 
 - mechanical sympathy— learn about the hardware and operating system to be sympathetic
@@ -287,3 +290,34 @@ return *u
 
 }
 ```
+- if you have four cores, go will make 4 processors for each core (modeling the Linux thing)
+    - each P is assigned an `m` -- modeling
+    - each P also has `G`s
+        - one G is always executing
+    - this is our CPU capacity! 4 cores, 4 threads
+- when your go program is running, the pacing algorithm happens. it's everything!
+    - GOGC -- anything there's heap growth, it grows by 100%
+        - don't play with 100% unless you need to (minimize resources first! integrity!)
+    - GOGC - looks at stats on the heap and makes decisions about when to run
+- the heap-- long term memory (size of heap overall)
+- GARBAGE = transient values that come into existence because of some function, then later aren't needed anymore
+#### garbage collector wants to maintain the smallest heap possible
+- let's say, a 4meg heap. on a busy program doing a lot of allocation, can fluctuate from 4-10meg. but NOT one that's constantly growing, or large swings (unless you're working with bursts of data... bottomline: understand what your program does).
+- imagine all Ps extremely busy doing work.
+- <b>only GO DEBUG will show you if you have a memory leak-- shows you your pace as well</b>
+- two stop the world points today: 100GC is bad-- "time to reach out on the mailing list because you got a problem."
+- all cooperation in go happens through function calls. if you write a for loop calculating something and no function calls in that loop, <b>you will stall out everything in your program!!!!!</b>
+    - everything you're doing NEEDS function calls
+
+### STOP THE WORLD
+![visualization of stop the world phases](readme-materials/GC_Algorithm.png)
+- [1] for first stop the world, need to bring every P to a safe point, at a function call. within 10 microseconds or less. not a big deal.
+- [2] scan stacks - from ? to active frame and heap
+    - everything when it starts is PAINTED WHITE
+    - after it's scanned, it's painted BLACK then placed into our queue
+    - THEN we paint it gray
+- [3] then sweep happens because we did everything right
+- we're not writing 0 allocation software. we're using the heap. lots of advantages. heap for stuff that NEEDS it, and stack for everything else.
+    - FIRST PRIORITY - get program working
+    - don't trust anything until it runs (twice ☺️ )
+- every go routine has stacks and pointers going to the heap etc.
