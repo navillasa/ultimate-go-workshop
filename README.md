@@ -873,7 +873,7 @@ func (l *Logger) Write(data string) {
 - 2. check out his starter-kits-- has best practices and load-shedding in it from the standard library
     - it's production level code; test it, copy it basically
     - already connected to mongo.. crud stuff.. definitely use
-    - you can also email bill!
+    - you can also email bill! -- bill@ardanlabs.com
     - study this!
 - 3. BACK PRESSURE
     - any time a goroutine is waiting for something; anytime a service is waiting for another service
@@ -943,3 +943,71 @@ go tool pprof -alloc_space ./project http://localhost:5000/debug/pprof/heap
 ```
 while the program's running, we're snap this profile out. the default memory profile is called in_use_space. we use alloc_space instead-- tells us every place there was allocation. there's also in_use_objects and alloc_objects. but we care most about space. (at least in 1.8 version..... totally broken in 1.9, but at least this works in 1.83 lol... scheduled to be fixed in 1.10!)
 we run some load with `hey` again.
+``` go
+(pprof) -cum something
+```
+rssSearch uses 237mb but cumulatively 1100mb... whoa.
+10gb of allocation--
+
+```go
+(pprof) rssSearch
+```
+
+the call to ToLower causes our pain point-- creating the 10gigs
+``` go
+for _, item := range d.Channel.Items {
+    if strings.Contains(strings.ToLower(item.Description), strings.ToLower(term)) {
+        results = append(results, Result {
+            Engine: engine,
+            Title: item.Title,
+            Link: item.Link
+            Content: item.Content
+        })
+    }
+}
+
+```
+
+``` go
+if err := xml.NewDecoder(resp.Body).Decode(&d); err != nil {
+    return []Result{}, err
+}
+
+for i := range d.Channel.Items {
+    if strings.Contains(item.Description, term) {
+        results = append()
+    }
+}
+
+```
+fixing this cut garbage collection in half, just by getting rid of allocations.
+gc pace is still 1-2 seconds, but more work in-between.
+he says he let the tooling do the work. the reason that line with the ToLower was so "disastrous" was because it was using the string over and over-- esp because inside a loop.
+
+- more info in a stack trace than you probably realize if you've seen it before. stack traces are really important.
+``` go
+func main() {
+    example(make([]string, 2, 4), "hello", 10) {
+    }
+
+    func example(slice []string, str string, i int) {
+        panic("want stack trace")
+    }
+
+    func example()
+}
+```
+stack trace shows you words at a time
+
+main.example(0xc8200, 0x2, 0x4, 0x708a8, 0x5, 0xa)
+
+^ you know every value that you passed in.
+stack trace shows word at a time.
+you know every word passed into the example at the time that it's passed in. pretty cool.
+word value (0x8190100001)
+hex: 01, 00, 01, 19
+value: true, false, true, 25
+--- stack trace --- main.Example(0x819910001)
+
+solve go challenge 1 and he'll give you a code review! (golang-challenge.org) get in the repo
+- he doesn't care what the code looks like if you can get it to work
