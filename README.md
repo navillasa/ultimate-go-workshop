@@ -708,3 +708,238 @@ func main() {
     duration(42).notify()
 }
 ```
+
+``` go
+context.TODO()
+
+// context uses value semantics
+// create a context with a timeout of 50 milliseconds
+ctx, cancel := context.WithTimeout(req.Context(), 50*time.Millisecond)
+defer cancel()
+
+// declare a new transport and client for the call
+var tr http.Transport
+client := http.Client {
+	Transport: &tr,
+}
+
+// whatever go routine creates context also is responsible for cancel
+// defer means don't execute this function now. defer its execution.
+// make the web call in a separate goroutine so it can be cancelled
+ch := make(chan error, 1)
+go func() {
+    log.Println("starting request")
+
+    // make teh web call and return any error
+    resp, err := client.Do(req)
+    if err !=  nil {
+        ch <- err
+        return
+    }
+
+    // close the response body on the return
+    defer resp.Body.Close()
+
+    // write the response to stdout so we can see it
+    io.Copy(os.Stdout, resp.Body)
+    // sends nil as a signal to the channel
+    ch <- nil
+    }()
+
+    // wait the request or timeout
+    select {
+        case <- ctx.Done():
+        log.Println("timeout, cancel work..")
+
+        // cancel the request and wait for it to complete..
+    }
+
+func main() {
+    // create a new req
+    req, err := http.NewRequest("GET", "https://www.goinggo.net/post/index.xml", nil)
+    if err != nil {
+        log.Println(err)
+        return
+    }
+
+    // create a context with a timeout of 50 milliseconds
+    ctx, cancel := ...
+}
+
+```
+
+parent process owned the process which blocked stdout. so every goroutine got blocked. couldn't write logs.
+- i can't allow every goroutine to write stdout anymore.
+- need to be able to quickly detect a problem. so how to solve problem with least amount of complexity?
+    - use drop pattern to simplify
+
+#### so we create a new package called logger
+
+``` go
+type Logger struct {
+    write chan string // ch to send/receive data to be logged
+    wg  sync...
+}
+
+func New(w io.Writer, capacity int) * Logger {
+
+    l := Logger {
+        write: make(chan string, capacity), // buffered channel if size > 0
+    }
+
+    // add one to the waitgroup to track the write goroutine
+    l.wg.Add(1)
+
+    go func() {
+
+        for d := range l.write {
+            fmt.Fprintln(w, d)
+            // writes string we're getting to the device (io)
+        }
+
+        // mark that we're done
+        l.wg.Done
+    }()
+
+    return &l
+}
+
+func (l *Logger) Write(data string) {
+
+    select {
+        case l.write <- data:
+        // the writing goroutine got it
+
+        default:
+        fmt.Println("dropping the write")
+    }
+}
+
+```
+
+
+1) define the write io writer interface
+
+``` go
+
+type device struct {
+    off bool
+}
+
+func (d *device) Write( p []byte) (n int, err error) {
+    if d.off {
+        // simulate disc problems
+        time.Sleep(time.seconds)
+    }
+}
+
+const grs = 10
+
+var d device
+l := logger.New(&d, grs)
+
+for i := 0; i < grs; i++ {
+    go func....
+}
+
+
+sigChan := make(chan os.Signal, 1) 
+signal.Notify(sigChan, os.Interrupt)
+
+for {
+    <- sigChan
+}
+
+```
+
+#### we're leveraging the buffer to determine capacity
+- quick feedback from the program to determine problems
+
+``` go
+func (l *Logger) Write(data string) {
+    // magic
+}
+```
+
+### at least one of these things are usually missed by dev teams
+- 1. <b>applications has to start up and shut down cleanly with integrity</b>
+    - from day one-- run some transacs, requests, hit ctrl-c watch it shut down
+    - try to get your software to shutdown WHILE its handling load
+    - if you do this a few times a week, you'll catch things early
+    - when you deploy a piece of software in production-- are you going to use kill9?
+        - if you can't signal it and it can't shut down, then you will
+    - if you're pushing code everyday, you have to test this several times a week
+    - when and how you goroutine can terminate
+- 2. check out his starter-kits-- has best practices and load-shedding in it from the standard library
+    - it's production level code; test it, copy it basically
+    - already connected to mongo.. crud stuff.. definitely use
+    - you can also email bill!
+    - study this!
+- 3. BACK PRESSURE
+    - any time a goroutine is waiting for something; anytime a service is waiting for another service
+    - can't get away from back pressure, but most likely performance coming from network latency or waiting for things
+    - have to know where there's potential backpressure
+        - this can tell you how healthy your channel is
+    - lots of back pressure is bad!!! can cause software to load
+        - need to measure points of latency
+    - can a goroutine ever block on that channel? what happens when the goroutine blocks on that channel?
+        - you have to know what back pressure is created in that scenario-- you can't NOT know
+- 4. weight-limiting? what happens when system crashes?
+    - is it moved across the callstack
+    - if database fails, timeout appropriately, send the right messages, give self the opportunity to fix it
+
+- anyone can write software that works when life is good. identify problems as soon as possible.
+- identify bad place immediately-- drop it on the floor.
+
+#### channels allow goroutines to communicate with each other through the use of signaling semantics
+- channels accomplish this through the use of sending/receiving data or by identifying state changes on individual channels. don't architect software with the idea of channels being a queue, focus on signaling and the semantics that simplify the orchestration required.
+    - use channels to orchestrate and coordinate goroutines
+        - focus on teh signalling semantics and not the sharing of data
+        - signaling with or without data
+        - question their use for synchronizing access to shared state
+
+depending on the problem you're solving, you may require diff channel semantics. depending on the semantics you need, diff architectural choices must be taken.
+
+writes logs to stdout
+``` go
+GODEBUG=gctrace=1 ./project > /dev/null
+```
+1 == # seconds running at time gc ran
+next num == ?
+next three num == wall clock-- first clock is first stop the world time at safe point (should be fairly small, like 0.025) never have the two nums add up to greater than 100 microseconds. should not happen.
+next == cpu clock with stop the world time. diff on cpu clock, concurrency work is broken into three numbers instead of one. bill tends to just look at the wall clock.
+three nums-- size of heap at time gc started, while it was running, and then when it ended (4->4->0 MB)
+the last one, (8p) is threads running-- 8ps or threads.
+
+- background process is scavenger. giving memory back to os. hard to use linux tooling to know if we have a memory leak or not.
+- if your nums go up every time you gc, then you have a memory leak. it should be stable.
+- the gc could force itself to run if there's inactivity.
+
+- is my service running fast enough-- is the memory stable? how is the pace?
+    - NGROK will help you ☺️
+``` go
+hey -m POST -c 100 -n 10000 "http://localhost:5000/search?term"
+```
+^ this will give you a response time histogram. super helpful.
+- if you run at 2ms time overall, that's fine, but less gcs (garbage collectors!) overall would be great.
+
+``` go
+import (
+    "expvar"
+    "log"
+    _ "net/http/pprof"
+    "os"
+    "runtime"
+    "time"
+)
+```
+if you go to localhost:5000/debug/pprof/
+- receive profile information!
+    - number of goroutines (and stack trace for each one) -- cpu profile that tooling can read
+    - heap profile, number of gcs we've run ******* nice!
+
+``` go
+go tool pprof -alloc_space ./project http://localhost:5000/debug/pprof/heap
+```
+while the program's running, we're snap this profile out. the default memory profile is called in_use_space. we use alloc_space instead-- tells us every place there was allocation. there's also in_use_objects and alloc_objects. but we care most about space. (at least in 1.8 version..... totally broken in 1.9, but at least this works in 1.83 lol... scheduled to be fixed in 1.10!)
+we run some load with `hey` again.
