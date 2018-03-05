@@ -1,7 +1,7 @@
 # Ultimate Go with Bill Kennedy
 
 following along here!
-<https://github.com/ardanlabs/gotraining/tree/master/topics/go/language/pointers>
+<https://github.com/ardanlabs/gotraining/tree/master/topics/go>
 
 ## my stream of conscious-esque notes of bill's presentation
 
